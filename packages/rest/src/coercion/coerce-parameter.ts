@@ -3,7 +3,13 @@
 // This file is licensed under the MIT License.
 // License text available at https://opensource.org/licenses/MIT
 
-import {isReferenceObject, ParameterObject} from '@loopback/openapi-v3';
+import {
+  isReferenceObject,
+  ParameterObject,
+  ReferenceObject,
+  SchemaObject,
+} from '@loopback/openapi-v3';
+import AjvCtor from 'ajv';
 import debugModule from 'debug';
 import {RestHttpErrors} from '../';
 import {parseJson} from '../parse-json';
@@ -22,6 +28,12 @@ const isRFC3339 = require('validator/lib/isRFC3339');
 const debug = debugModule('loopback:rest:coercion');
 
 /**
+ * The AJV instance is created for coercing object parameters
+ * with provided schema. Not for validation.
+ */
+const AJV = new AjvCtor({coerceTypes: true});
+
+/**
  * Coerce the http raw data to a JavaScript type data of a parameter
  * according to its OpenAPI schema specification.
  *
@@ -32,13 +44,7 @@ export function coerceParameter(
   data: string | undefined | object,
   spec: ParameterObject,
 ) {
-  let schema = spec.schema;
-
-  // If a query parameter is a url encoded Json object, the schema is defined under content['application/json']
-  if (!schema && spec.in === 'query' && spec.content) {
-    const jsonSpec = spec.content['application/json'];
-    schema = jsonSpec.schema;
-  }
+  const schema = extractSchemaFromSpec(spec);
 
   if (!schema || isReferenceObject(schema)) {
     debug(
@@ -169,8 +175,37 @@ function coerceObject(input: string | object, spec: ParameterObject) {
   if (typeof data !== 'object' || Array.isArray(data))
     throw RestHttpErrors.invalidData(input, spec.name);
 
-  // TODO(bajtos) apply coercion based on properties defined by spec.schema
+  const schema = extractSchemaFromSpec(spec);
+  if (schema) {
+    // Apply coercion based on properties defined by spec.schema
+    const validate = AJV.compile(schema);
+    // The return type of valid is boolean | PromiseLike<...>,
+    // specify boolean to avoid confusion.
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    const isValid = validate(data) as boolean;
+  }
+
   return data;
+}
+
+/**
+ * Extract the schema from an OpenAPI parameter specification. If the root level
+ * one not found, search from media type 'application/json'.
+ *
+ * @param spec The parameter specification
+ */
+function extractSchemaFromSpec(
+  spec: ParameterObject,
+): SchemaObject | ReferenceObject | undefined {
+  let schema = spec.schema;
+
+  // If a query parameter is a url encoded Json object,
+  // the schema is defined under content['application/json']
+  if (!schema && spec.in === 'query') {
+    schema = spec.content?.['application/json']?.schema;
+  }
+
+  return schema;
 }
 
 function parseJsonIfNeeded(
