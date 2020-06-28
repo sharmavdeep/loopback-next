@@ -14,6 +14,7 @@ import {
   RequestBodyValidationOptions,
   RestHttpErrors,
   validateValueAgainstSchema,
+  ValueValidationOptions,
 } from '../';
 import {parseJson} from '../parse-json';
 import {
@@ -40,7 +41,7 @@ const debug = debugModule('loopback:rest:coercion');
 export async function coerceParameter(
   data: string | undefined | object,
   spec: ParameterObject,
-  options?: RequestBodyValidationOptions,
+  options?: ValueValidationOptions,
 ) {
   const schema = extractSchemaFromSpec(spec);
 
@@ -184,7 +185,7 @@ async function coerceObject(
       data,
       schema,
       {},
-      {...options, coerceTypes: true},
+      {...options, coerceTypes: true, position: 'parameter'},
     );
   }
 
